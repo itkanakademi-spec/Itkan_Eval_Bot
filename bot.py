@@ -241,9 +241,9 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if CHANNEL_LINK:
             channel_message = (
-                f"📢 <b>{LEVEL_NAMES.get(level)} seviye tilavet derslerine</b> "
-                f"ana kanalımızdan katılabilirsiniz:\n{CHANNEL_LINK}\n\n"
-                f"🌿 Faydalanabilmeleri için bu bağlantıyı kadın kardeşlerinizle paylaşabilirsiniz."
+                f"📢 {LEVEL_NAMES.get(level)} seviye tilavet derslerine ana kanalımız üzerinden katılabilirsiniz:\n\n"
+                f"{CHANNEL_LINK}\n\n"
+                f"🌿 Daha fazla hanım kardeşimizin istifade edebilmesi için bu bağlantıyı onlarla paylaşabilirsiniz."
             )
             await context.bot.send_message(chat_id=student_id, text=channel_message, parse_mode="HTML")
 
