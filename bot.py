@@ -73,7 +73,7 @@ LEVEL_MOTIVATION = {
     "nurani": "Her yolculuk bir adımla başlar 🌱 Kur'an'la tanışma yolculuğunuzun başındasınız, bu çok kıymetli bir adım.",
     "beginner": "Güzel bir başlangıç yaptınız 🌿 Düzenli tekrarla kısa sürede çok yol kat edeceksiniz inşallah.",
     "intermediate": "Emeğiniz gözle görülüyor 🌷 Bu seviyeye gelmek sabır ister, tebrikler!",
-    "advanced": "Maşallah, gerçekten güzel bir seviyedesiniz ✨ Bu inceliği korumak ve derinleştirmek için devam edin.",
+    "advanced": "Maşallah, gerçekten güzel bir seviyedesiniz. Bu inceliği korumak ve derinleştirmek için devam edin.",
 }
 
 # --------------------------
@@ -86,7 +86,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     await update.message.reply_text(
         "🌿 <b>Hoş geldiniz!</b>\n\n"
-        "Kur'an tilavetinizi geliştirme yolunda attığınız bu adım çok kıymetlidir ✨\n\n"
+        "Kur'an tilavetinizi geliştirme yolunda attığınız bu adım çok kıymetlidir\n\n"
         "📝 Lütfen önce <b>adınızı ve soyadınızı</b> yazınız:",
         parse_mode="HTML"
     )
@@ -146,6 +146,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if context.user_data.get("state") != "await_voice":
         await update.message.reply_text("ℹ️ Lütfen önce /start yazarak bilgilerinizi tamamlayınız.")
+        return
+
+    data = student_data.get(user.id, {})
+    if not data.get("name") or not data.get("age"):
+        context.user_data["state"] = None
+        await update.message.reply_text("ℹ️ Bilgileriniz eksik. Lütfen /start yazarak yeniden başlayınız.")
         return
 
     voice = update.message.voice.file_id
@@ -215,10 +221,7 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     channel_line = ""
     if CHANNEL_LINK:
         channel_line = (
-            f"\n\n📢 <b>{LEVEL_NAMES.get(level)} seviye tilavet derslerine</b> "
-            f"ana kanalımızdan katılabilirsiniz:\n{CHANNEL_LINK}\n\n"
-            f"🌿 Bu bağlantıyı, faydalanabilmeleri için diğer kardeşlerinizle paylaşabilirsiniz.\n\n"
-            f"🔔 Seviyenize uygun yeni kurs kayıtları açıldığında kaçırmamak için "
+            f"\n\n🔔 Seviyenize uygun yeni kurs kayıtları açıldığında kaçırmamak için "
             f"kanaldaki duyuruları takip etmenizi rica ederiz."
         )
 
@@ -233,6 +236,15 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await context.bot.send_message(chat_id=student_id, text=message, parse_mode="HTML")
+
+        if CHANNEL_LINK:
+            channel_message = (
+                f"📢 <b>{LEVEL_NAMES.get(level)} seviye tilavet derslerine</b> "
+                f"ana kanalımızdan katılabilirsiniz:\n{CHANNEL_LINK}\n\n"
+                f"🌿 Faydalanabilmeleri için bu bağlantıyı kadın kardeşlerinizle paylaşabilirsiniz."
+            )
+            await context.bot.send_message(chat_id=student_id, text=channel_message, parse_mode="HTML")
+
         status = "gönderildi ✅"
     except Exception:
         status = "gönderilemedi ⚠️ (öğrenci botu başlatmamış olabilir)"
