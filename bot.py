@@ -13,8 +13,7 @@ GROUP_ID = int(os.getenv("GROUP_ID"))
 CHANNEL_LINK = os.getenv("CHANNEL_LINK", "")
 
 # tekrar başlatmalarda kaybolabilir, geçici bellek
-student_answers = {}
-student_names = {}
+student_data = {}  # user_id -> {"name":..,"age":..,"username":..,"tajweed":..}
 
 # --------------------------
 # Dummy HTTP Server (Render port gereksinimi için)
@@ -49,22 +48,79 @@ LEVEL_MAP = {
     "advanced": "🔴 İleri",
 }
 
-LEVEL_ADVICE = {
-    "nurani": "Kaide-i Nuraniyye seviyesindesiniz. Harflerin mahreçlerine ve temel okuma kurallarına odaklanarak sağlam bir temel oluşturmanız önerilir.",
-    "beginner": "Başlangıç seviyesindesiniz. Tecvid kurallarını tekrar ederek ve düzenli pratikle okuyuşunuzu güçlendirebilirsiniz.",
-    "intermediate": "Orta seviyedesiniz. Akıcılığınızı artırmak için uzun soluklu okumalar ve tecvid detaylarına dikkat etmeniz önerilir.",
-    "advanced": "İleri seviyedesiniz. Maşallah! Tilavetinizi daha da geliştirmek için tertil ve tecvid inceliklerine odaklanabilirsiniz.",
+LEVEL_NAMES = {
+    "nurani": "Kaide-i Nuraniyye",
+    "beginner": "Başlangıç",
+    "intermediate": "Orta",
+    "advanced": "İleri",
+}
+
+LEVEL_MOTIVATION = {
+    "nurani": "Her yolculuk bir adımla başlar 🌱 Kur'an'la tanışma yolculuğunuzun başındasınız, bu çok kıymetli bir adım.",
+    "beginner": "Güzel bir başlangıç yaptınız 🌿 Düzenli tekrarla kısa sürede çok yol kat edeceksiniz inşallah.",
+    "intermediate": "Emeğiniz gözle görülüyor 🌷 Bu seviyeye gelmek sabır ister, tebrikler!",
+    "advanced": "Maşallah, gerçekten güzel bir seviyedesiniz ✨ Bu inceliği korumak ve derinleştirmek için devam edin.",
 }
 
 # --------------------------
-# 🚀 /start
+# 🚀 /start — isim sorusuyla başlar
 # --------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["state"] = "await_name"
+    student_data[update.effective_user.id] = {
+        "username": update.effective_user.username or "yok"
+    }
     await update.message.reply_text(
         "🌿 <b>Hoş geldiniz!</b>\n\n"
         "Kur'an tilavetinizi geliştirme yolunda attığınız bu adım çok kıymetlidir ✨\n\n"
-        "🎙️ Lütfen <b>Fetih Suresi 29. ayeti</b> ses kaydı olarak gönderiniz.\n\n"
-        "📌 İTKAN | Kur'an Akademisi",
+        "📝 Lütfen önce <b>adınızı ve soyadınızı</b> yazınız:",
+        parse_mode="HTML"
+    )
+
+# --------------------------
+# 📝 Metin mesajları (isim / yaş)
+# --------------------------
+async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    state = context.user_data.get("state")
+    user_id = update.effective_user.id
+    text = update.message.text.strip()
+
+    if state == "await_name":
+        student_data.setdefault(user_id, {})["name"] = text
+        context.user_data["state"] = "await_age"
+        await update.message.reply_text("🔢 Şimdi lütfen yaşınızı yazınız:")
+
+    elif state == "await_age":
+        student_data.setdefault(user_id, {})["age"] = text
+        context.user_data["state"] = "await_tajweed"
+
+        keyboard = [
+            [InlineKeyboardButton("✅ Evet", callback_data="student_yes", style="success")],
+            [InlineKeyboardButton("❌ Hayır", callback_data="student_no", style="danger")]
+        ]
+        await update.message.reply_text(
+            "📌 Tecvid eğitimi aldınız mı?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    else:
+        await update.message.reply_text("ℹ️ Başlamak için lütfen /start yazınız.")
+
+# --------------------------
+# 👩‍🎓 Öğrenci tecvid cevabı → ardından ses kaydı istenir
+# --------------------------
+async def handle_student_tajweed(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    user_id = query.from_user.id
+    answer = "Aldı" if query.data == "student_yes" else "Almadı"
+    student_data.setdefault(user_id, {})["tajweed"] = answer
+    context.user_data["state"] = "await_voice"
+
+    await query.edit_message_text(
+        "✅ Bilgileriniz kaydedildi.\n\n"
+        "🎙️ Şimdi lütfen <b>Fetih Suresi 29. ayeti</b> ses kaydı olarak gönderiniz.",
         parse_mode="HTML"
     )
 
@@ -73,14 +129,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
-    voice = update.message.voice.file_id
 
-    student_names[user.id] = user.first_name
+    if context.user_data.get("state") != "await_voice":
+        await update.message.reply_text("ℹ️ Lütfen önce /start yazarak bilgilerinizi tamamlayınız.")
+        return
+
+    voice = update.message.voice.file_id
+    data = student_data.setdefault(user.id, {})
+    data["username"] = user.username or "yok"
+
+    name = data.get("name", user.first_name)
+    age = data.get("age", "Bilinmiyor")
+    username = data.get("username", "yok")
+    tajweed = data.get("tajweed", "Bilinmiyor")
 
     text = (
         f"🎧 <b>Yeni tilavet gönderildi</b>\n\n"
-        f"👤 Öğrenci: {user.first_name}\n"
-        f"🆔 ID: <code>{user.id}</code>\n\n"
+        f"👤 Ad Soyad: {name}\n"
+        f"🔢 Yaş: {age}\n"
+        f"🆔 ID: <code>{user.id}</code>\n"
+        f"🔗 Kullanıcı adı: @{username}\n"
+        f"📌 Tecvid: {tajweed}\n\n"
         f"📌 İTKAN | Kur'an Akademisi"
     )
 
@@ -100,29 +169,10 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=level_keyboard
     )
 
-    # Öğrenciye tecvid sorusu
-    keyboard = [
-        [InlineKeyboardButton("✅ Evet", callback_data="student_yes", style="success")],
-        [InlineKeyboardButton("❌ Hayır", callback_data="student_no", style="danger")]
-    ]
+    context.user_data["state"] = None
+
     await update.message.reply_text(
-        "📌 Tecvid eğitimi aldınız mı?",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-# --------------------------
-# 👩‍🎓 Öğrenci tecvid cevabı
-# --------------------------
-async def handle_student_tajweed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    answer = "Aldı" if query.data == "student_yes" else "Almadı"
-    student_answers[user_id] = answer
-
-    await query.edit_message_text(
-        "✅ Cevabınız kaydedildi.\n\n"
+        "✅ Kaydınız alındı.\n\n"
         "⏳ Değerlendirme süreciniz başlamıştır.\n"
         "Değerlendirmeniz en kısa sürede tarafınıza iletilecektir inşallah 🌿\n\n"
         "📌 İTKAN | Kur'an Akademisi"
@@ -140,20 +190,29 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.answer()
 
-    data = query.data.split("_")
-    level = data[1]
-    student_id = int(data[2])
+    data_parts = query.data.split("_")
+    level = data_parts[1]
+    student_id = int(data_parts[2])
 
-    tajweed = student_answers.get(student_id, "Bilinmiyor")
-    student_name = student_names.get(student_id, "Öğrenci")
+    data = student_data.get(student_id, {})
+    tajweed = data.get("tajweed", "Bilinmiyor")
+    student_name = data.get("name", "Öğrenci")
 
-    channel_line = f"\n\n📢 Kaydınızı paylaşmak için: {CHANNEL_LINK}" if CHANNEL_LINK else ""
+    channel_line = ""
+    if CHANNEL_LINK:
+        channel_line = (
+            f"\n\n📢 <b>{LEVEL_NAMES.get(level)} seviye tilavet derslerine</b> "
+            f"ana kanalımızdan katılabilirsiniz:\n{CHANNEL_LINK}\n\n"
+            f"🌿 Bu bağlantıyı, faydalanabilmeleri için diğer kardeşlerinizle paylaşabilirsiniz.\n\n"
+            f"🔔 Seviyenize uygun yeni kurs kayıtları açıldığında kaçırmamak için "
+            f"kanaldaki duyuruları takip etmenizi rica ederiz."
+        )
 
     message = (
         f"📊 <b>Değerlendirmeniz:</b>\n\n"
-        f"Seviye: {LEVEL_MAP.get(level)}\n"
+        f"Seviyeniz: {LEVEL_MAP.get(level)}\n"
         f"Tecvid: {tajweed}\n\n"
-        f"💡 {LEVEL_ADVICE.get(level, '')}"
+        f"💡 {LEVEL_MOTIVATION.get(level, '')}"
         f"{channel_line}\n\n"
         f"📌 İTKAN | Kur'an Akademisi"
     )
@@ -178,6 +237,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_student_tajweed, pattern="^student_"))
     app.add_handler(CallbackQueryHandler(handle_level, pattern="^level_"))
     app.run_polling()
