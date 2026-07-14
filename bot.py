@@ -162,10 +162,12 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     age = data.get("age", "Bilinmiyor")
     username = data.get("username", "yok")
     tajweed = data.get("tajweed", "Bilinmiyor")
+    telegram_name = user.full_name  # Telegram hesabındaki gerçek görünen isim
 
     text = (
         f"🎧 <b>Yeni tilavet gönderildi</b>\n\n"
         f"👤 Ad Soyad: {name}\n"
+        f"📱 Telegram İsmi: {telegram_name}\n"
         f"🔢 Yaş: {age}\n"
         f"🆔 ID: <code>{user.id}</code>\n"
         f"🔗 Kullanıcı adı: @{username}\n"
