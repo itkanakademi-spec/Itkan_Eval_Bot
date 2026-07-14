@@ -1,6 +1,11 @@
 import os
+import json
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from datetime import datetime, timezone
+
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -11,9 +16,18 @@ from telegram.ext import (
 TOKEN = os.getenv("BOT_TOKEN")
 GROUP_ID = int(os.getenv("GROUP_ID"))
 CHANNEL_LINK = os.getenv("CHANNEL_LINK", "")
+COLLECTION = "itkan_eval_records"
 
-# tekrar başlatmalarda kaybolabilir, geçici bellek
+# tekrar başlatmalarda kaybolabilir, geçici bellek (sadece aktif oturum verisi)
 student_data = {}  # user_id -> {"name":..,"age":..,"username":..,"tajweed":..}
+
+# --------------------------
+# Firebase Bağlantısı
+# --------------------------
+firebase_json = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
+cred = credentials.Certificate(firebase_json)
+firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # --------------------------
 # Dummy HTTP Server (Render port gereksinimi için)
@@ -222,6 +236,21 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status = "gönderildi ✅"
     except Exception:
         status = "gönderilemedi ⚠️ (öğrenci botu başlatmamış olabilir)"
+
+    # Kalıcı kayıt (Firestore)
+    try:
+        db.collection(COLLECTION).add({
+            "student_id": student_id,
+            "name": student_name,
+            "age": data.get("age", "Bilinmiyor"),
+            "username": data.get("username", "yok"),
+            "tajweed": tajweed,
+            "level": level,
+            "level_name": LEVEL_NAMES.get(level),
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as e:
+        print(f"Firestore kayıt hatası: {e}")
 
     await query.edit_message_text(
         f"✅ {student_name} için '{LEVEL_MAP.get(level)}' değerlendirmesi kaydedildi.\n"
