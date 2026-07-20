@@ -1,7 +1,5 @@
 import os
 import json
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime, timezone
 
 import firebase_admin
@@ -28,24 +26,6 @@ firebase_json = json.loads(os.getenv("FIREBASE_CREDENTIALS"))
 cred = credentials.Certificate(firebase_json)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
-
-# --------------------------
-# Dummy HTTP Server (Render port gereksinimi için)
-# --------------------------
-class DummyHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
-    def log_message(self, format, *args):
-        pass
-
-def run_server():
-    port = int(os.getenv("PORT", 10000))
-    HTTPServer(("0.0.0.0", port), DummyHandler).serve_forever()
 
 # --------------------------
 # Yardımcı
@@ -272,18 +252,33 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # --------------------------
-# Çalıştır
+# Çalıştır (Webhook modu — Render Web Service ile uyumlu, ücretsiz)
 # --------------------------
 def main():
-    threading.Thread(target=run_server, daemon=True).start()
-
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_student_tajweed, pattern="^student_"))
     app.add_handler(CallbackQueryHandler(handle_level, pattern="^level_"))
-    app.run_polling()
+
+    port = int(os.getenv("PORT", 10000))
+    # Render, web servisleri için bu ortam değişkenini otomatik olarak sağlar
+    external_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+    if not external_hostname:
+        raise RuntimeError(
+            "RENDER_EXTERNAL_HOSTNAME bulunamadı. Render Web Service olarak dağıtıldığından emin olun."
+        )
+
+    webhook_path = TOKEN  # tahmin edilmesi zor olsun diye token'ı path olarak kullanıyoruz
+    webhook_url = f"https://{external_hostname}/{webhook_path}"
+
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=port,
+        url_path=webhook_path,
+        webhook_url=webhook_url,
+    )
 
 if __name__ == "__main__":
     main()
