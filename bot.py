@@ -254,13 +254,19 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------
 # Çalıştır (Webhook modu — Render Web Service ile uyumlu, ücretsiz)
 # --------------------------
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
-    app.add_handler(CallbackQueryHandler(handle_student_tajweed, pattern="^student_"))
-    app.add_handler(CallbackQueryHandler(handle_level, pattern="^level_"))
+import asyncio
+from aiohttp import web
+
+async def health(request):
+    return web.Response(text="OK")
+
+async def run():
+    application = ApplicationBuilder().token(TOKEN).updater(None).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    application.add_handler(CallbackQueryHandler(handle_student_tajweed, pattern="^student_"))
+    application.add_handler(CallbackQueryHandler(handle_level, pattern="^level_"))
 
     port = int(os.getenv("PORT", 10000))
     # Render, web servisleri için bu ortam değişkenini otomatik olarak sağlar
@@ -273,12 +279,29 @@ def main():
     webhook_path = TOKEN  # tahmin edilmesi zor olsun diye token'ı path olarak kullanıyoruz
     webhook_url = f"https://{external_hostname}/{webhook_path}"
 
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=port,
-        url_path=webhook_path,
-        webhook_url=webhook_url,
-    )
+    async def telegram_webhook(request):
+        data = await request.json()
+        update = Update.de_json(data, application.bot)
+        await application.update_queue.put(update)
+        return web.Response()
+
+    web_app = web.Application()
+    web_app.router.add_get("/", health)          # UptimeRobot / Render sağlık kontrolü
+    web_app.router.add_post(f"/{webhook_path}", telegram_webhook)  # Telegram webhook
+
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+    async with application:
+        await application.bot.set_webhook(url=webhook_url)
+        await application.start()
+        await asyncio.Event().wait()  # sonsuza kadar çalışmaya devam et
+        await application.stop()
+
+def main():
+    asyncio.run(run())
 
 if __name__ == "__main__":
     main()
