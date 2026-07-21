@@ -92,6 +92,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = "await_age"
         await update.message.reply_text("🔢 Şimdi lütfen yaşınızı yazınız:")
 
+    elif state == "await_name_fix":
+        student_data.setdefault(user_id, {})["name"] = text
+        context.user_data["state"] = None
+        await update.message.reply_text("✅ İsminiz güncellendi, teşekkür ederiz.")
+
     elif state == "await_age":
         student_data.setdefault(user_id, {})["age"] = text
         context.user_data["state"] = "await_tajweed"
@@ -172,6 +177,8 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton(LEVEL_MAP["beginner"], callback_data=f"level_beginner_{user.id}")],
         [InlineKeyboardButton(LEVEL_MAP["intermediate"], callback_data=f"level_intermediate_{user.id}")],
         [InlineKeyboardButton(LEVEL_MAP["advanced"], callback_data=f"level_advanced_{user.id}")],
+        [InlineKeyboardButton("🔁 Sesi tekrar iste", callback_data=f"resendvoice_{user.id}")],
+        [InlineKeyboardButton("✏️ İsmi tekrar iste", callback_data=f"resendname_{user.id}")],
     ])
     await context.bot.send_message(
         chat_id=GROUP_ID,
@@ -187,6 +194,62 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Değerlendirmeniz en kısa sürede tarafınıza iletilecektir inşallah 🌿\n\n"
         "📌 İTKAN | Kur'an Akademisi"
     )
+
+# --------------------------
+# 🔁 Öğretmen sesi tekrar istiyor
+# --------------------------
+async def handle_resend_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    if not await is_admin(update, context):
+        await query.answer("⛔️ Sadece yöneticiler bu işlemi yapabilir", show_alert=True)
+        return
+
+    await query.answer()
+
+    student_id = int(query.data.split("_")[1])
+
+    # Öğrencinin durumu "ses bekleniyor" olarak ayarlanır; isim/yaş/tecvid bilgileri saklı kalır
+    context.application.user_data[student_id]["state"] = "await_voice"
+
+    try:
+        await context.bot.send_message(
+            chat_id=student_id,
+            text=(
+                "🎙️ Ses kaydınızda bir sorun tespit edildi.\n\n"
+                "Lütfen <b>Fetih Suresi 29. ayeti</b> ses kaydı olarak tekrar gönderiniz."
+            ),
+            parse_mode="HTML"
+        )
+        await query.message.reply_text("✅ Öğrenciden ses kaydı tekrar istendi.")
+    except Exception:
+        await query.message.reply_text("⚠️ Öğrenciye mesaj gönderilemedi (bot başlatmamış olabilir).")
+
+# --------------------------
+# ✏️ Öğretmen ismi tekrar istiyor
+# --------------------------
+async def handle_resend_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+
+    if not await is_admin(update, context):
+        await query.answer("⛔️ Sadece yöneticiler bu işlemi yapabilir", show_alert=True)
+        return
+
+    await query.answer()
+
+    student_id = int(query.data.split("_")[1])
+
+    # Sadece isim düzeltilecek; yaş/tecvid/ses adımları tekrarlanmaz
+    context.application.user_data[student_id]["state"] = "await_name_fix"
+
+    try:
+        await context.bot.send_message(
+            chat_id=student_id,
+            text="📝 Adınızda bir hata tespit edildi. Lütfen adınızı ve soyadınızı tekrar yazınız:"
+        )
+        await query.message.reply_text("✅ Öğrenciden ismini tekrar yazması istendi.")
+    except Exception:
+        await query.message.reply_text("⚠️ Öğrenciye mesaj gönderilemedi (bot başlatmamış olabilir).")
 
 # --------------------------
 # 👩‍🏫 Öğretmen seviye değerlendirmesi
@@ -215,11 +278,20 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"kanaldaki duyuruları takip etmenizi rica ederiz."
         )
 
+    group_link = LEVEL_GROUP_LINKS.get(level, "")
+    group_line = ""
+    if group_link:
+        group_line = (
+            f"\n\n👥 {LEVEL_NAMES.get(level)} seviyesine özel grubumuza aşağıdaki bağlantıdan katılabilirsiniz:\n"
+            f"{group_link}"
+        )
+
     message = (
         f"📊 <b>Değerlendirmeniz:</b>\n\n"
         f"Seviyeniz: {LEVEL_MAP.get(level)}\n"
         f"Tecvid: {tajweed}\n\n"
         f"💡 {LEVEL_MOTIVATION.get(level, '')}"
+        f"{group_line}"
         f"{channel_line}\n\n"
         f"📌 İTKAN | Kur'an Akademisi"
     )
@@ -234,14 +306,6 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🌿 Daha fazla hanım kardeşimizin istifade edebilmesi için bu bağlantıyı onlarla paylaşabilirsiniz."
             )
             await context.bot.send_message(chat_id=student_id, text=channel_message, parse_mode="HTML")
-
-        group_link = LEVEL_GROUP_LINKS.get(level, "")
-        if group_link:
-            group_message = (
-                f"👥 {LEVEL_NAMES.get(level)} seviyesine özel grubumuza aşağıdaki bağlantıdan katılabilirsiniz:\n\n"
-                f"{group_link}"
-            )
-            await context.bot.send_message(chat_id=student_id, text=group_message, parse_mode="HTML")
 
         status = "gönderildi ✅"
     except Exception:
@@ -283,6 +347,8 @@ async def run():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     application.add_handler(CallbackQueryHandler(handle_student_tajweed, pattern="^student_"))
     application.add_handler(CallbackQueryHandler(handle_level, pattern="^level_"))
+    application.add_handler(CallbackQueryHandler(handle_resend_voice, pattern="^resendvoice_"))
+    application.add_handler(CallbackQueryHandler(handle_resend_name, pattern="^resendname_"))
 
     port = int(os.getenv("PORT", 10000))
     # Render, web servisleri için bu ortam değişkenini otomatik olarak sağlar
