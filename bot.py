@@ -301,7 +301,8 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if CHANNEL_LINK:
             channel_message = (
-                f"📢 {LEVEL_NAMES.get(level)} seviye tilavet derslerine ana kanalımız üzerinden katılabilirsiniz:\n\n"
+                f"📢 Yeni kurs kayıtları ve duyurularımızdan haberdar olmak için "
+                f"ana kanalımıza katılabilirsiniz:\n\n"
                 f"{CHANNEL_LINK}\n\n"
                 f"🌿 Daha fazla hanım kardeşimizin istifade edebilmesi için bu bağlantıyı onlarla paylaşabilirsiniz."
             )
