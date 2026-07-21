@@ -16,6 +16,14 @@ GROUP_ID = int(os.getenv("GROUP_ID"))
 CHANNEL_LINK = os.getenv("CHANNEL_LINK", "")
 COLLECTION = "itkan_eval_records"
 
+# Her seviyeye özel grup linki (Render ortam değişkenlerinden okunur)
+LEVEL_GROUP_LINKS = {
+    "nurani": os.getenv("GROUP_LINK_NURANI", ""),
+    "beginner": os.getenv("GROUP_LINK_BEGINNER", ""),
+    "intermediate": os.getenv("GROUP_LINK_INTERMEDIATE", ""),
+    "advanced": os.getenv("GROUP_LINK_ADVANCED", ""),
+}
+
 # tekrar başlatmalarda kaybolabilir, geçici bellek (sadece aktif oturum verisi)
 student_data = {}  # user_id -> {"name":..,"age":..,"username":..,"tajweed":..}
 
@@ -226,6 +234,14 @@ async def handle_level(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🌿 Daha fazla hanım kardeşimizin istifade edebilmesi için bu bağlantıyı onlarla paylaşabilirsiniz."
             )
             await context.bot.send_message(chat_id=student_id, text=channel_message, parse_mode="HTML")
+
+        group_link = LEVEL_GROUP_LINKS.get(level, "")
+        if group_link:
+            group_message = (
+                f"👥 {LEVEL_NAMES.get(level)} seviyesine özel grubumuza aşağıdaki bağlantıdan katılabilirsiniz:\n\n"
+                f"{group_link}"
+            )
+            await context.bot.send_message(chat_id=student_id, text=group_message, parse_mode="HTML")
 
         status = "gönderildi ✅"
     except Exception:
